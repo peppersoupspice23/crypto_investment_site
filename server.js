@@ -23,7 +23,7 @@ mongoose
 
 // Routes
 app.use('/auth', authRoutes);
-app.use("/wallet", walletRoutes); // 💰 new route
+app.use('/api/wallet', walletRoutes);
 
 // Root route
 app.get('/', (req, res) => {

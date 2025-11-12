@@ -1,4 +1,5 @@
 import User from '../models/userModel.js';
+import Wallet from "../models/Wallet.js"; // add this at the top
 
 // 🧾 Register user
 export const registerUser = async (req, res) => {
@@ -10,6 +11,8 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
 
     const user = await User.create({ firstName, lastName, email, password });
+       // 🪙 Automatically create a wallet for the new user
+    await Wallet.create({ user: user._id, balance: 0 });
     const token = user.getJWT();
 
     res.status(201).json({

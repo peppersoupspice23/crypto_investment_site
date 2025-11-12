@@ -1,12 +1,13 @@
 import express from "express";
 import { getWallet, deposit, withdraw } from "../controllers/walletController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+
 
 const router = express.Router();
 
 // Protected routes
-router.get("/", protect, getWallet);
-router.post("/deposit", protect, deposit);
-router.post("/withdraw", protect, withdraw);
+router.get("/", authMiddleware, getWallet);
+router.post("/deposit", authMiddleware, deposit);
+router.post("/withdraw", authMiddleware, withdraw);
 
 export default router;
