@@ -5,6 +5,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import walletRoutes from "./routes/walletRoutes.js";
+import tradeRoutes from "./routes/tradeRoutes.js";
+import transactionRoutes from "./routes/transactionRoutes.js";
 
 dotenv.config();
 
@@ -15,6 +17,7 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
+
 // Database connection
 mongoose
   .connect(process.env.MONGO_URI)
@@ -24,6 +27,8 @@ mongoose
 // Routes
 app.use('/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use("/api/trade", tradeRoutes);
+app.use("/api/transactions", transactionRoutes); 
 
 // Root route
 app.get('/', (req, res) => {
