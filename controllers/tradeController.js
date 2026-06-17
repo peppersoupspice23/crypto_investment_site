@@ -1,19 +1,16 @@
 // controllers/tradeController.js
-import Wallet from "../models/Wallet.js";
+import Wallet from "../models/wallet.js";
 import Trade from "../models/trade.js";
 import Transaction from "../models/transaction.js";
-
-// Dummy crypto prices (replace with real API later)
-const CRYPTO_PRICES = {
-  BTC: 30000,
-  ETH: 2000,
-};
+import { getLivePrice, isSupportedAsset } from "../services/marketService.js";
 
 // 💰 Buy crypto
 export const buyCrypto = async (req, res) => {
   try {
-    const { crypto, amountUSD } = req.body;
-    if (!CRYPTO_PRICES[crypto]) return res.status(400).json({ message: "Invalid crypto" });
+    const { crypto } = req.body;
+    const amountUSD = Number(req.body.amountUSD);
+    const symbol = String(crypto || '').toUpperCase();
+    if (!isSupportedAsset(symbol)) return res.status(400).json({ message: "Invalid crypto" });
     if (amountUSD <= 0) return res.status(400).json({ message: "Invalid amount" });
 
     const wallet = await Wallet.findOne({ user: req.user._id });
@@ -21,32 +18,47 @@ export const buyCrypto = async (req, res) => {
 
     if (wallet.balance < amountUSD) return res.status(400).json({ message: "Insufficient funds" });
 
-    const cryptoAmount = amountUSD / CRYPTO_PRICES[crypto];
-    wallet.balance -= amountUSD;
-    await wallet.save();
+    const market = await getLivePrice(symbol);
+    if (!market?.price) return res.status(502).json({ message: "Unable to fetch live price" });
 
-       // Log transaction
-    await Transaction.create({
-      user: req.user._id,
-      type: "buy",
-      crypto,
-      amountUSD,
-      amountCrypto: cryptoAmount,
-      priceAtTrade: CRYPTO_PRICES[crypto]
-    });
+    const cryptoAmount = amountUSD / market.price;
+
+    // FIX: Update both balance field and holdings Map
+    wallet.balance -= amountUSD;
+    wallet.updateHolding("USD", -amountUSD);
+    wallet.updateHolding(symbol, cryptoAmount);
+
+    await wallet.save();
 
     const trade = await Trade.create({
       user: req.user._id,
       type: "buy",
-      crypto,
+      crypto: symbol,
       amountUSD,
       amountCrypto: cryptoAmount,
-      priceAtTrade: CRYPTO_PRICES[crypto],
+      priceAtTrade: market.price,
+    });
+
+    await Transaction.create({
+      user: req.user._id,
+      wallet: wallet._id,
+      trade: trade._id,
+      type: "buy",
+      asset: symbol,
+      crypto: symbol,
+      amountUSD,
+      amountCrypto: cryptoAmount,
+      priceAtTrade: market.price,
+      balanceBefore: wallet.balance + amountUSD,
+      balanceAfter: wallet.balance,
+      description: `Bought ${cryptoAmount} ${symbol}`,
+      status: "completed",
     });
 
     res.status(200).json({
       message: "Buy successful",
       walletBalance: wallet.balance,
+      priceSource: market.source,
       trade,
     });
   } catch (err) {
@@ -57,63 +69,91 @@ export const buyCrypto = async (req, res) => {
 // 💸 Sell crypto
 export const sellCrypto = async (req, res) => {
   try {
-    const { crypto, amountCrypto } = req.body;
-    if (!CRYPTO_PRICES[crypto]) return res.status(400).json({ message: "Invalid crypto" });
+    const { crypto } = req.body;
+    const amountCrypto = Number(req.body.amountCrypto);
+    const symbol = String(crypto || '').toUpperCase();
+    if (!isSupportedAsset(symbol)) return res.status(400).json({ message: "Invalid crypto" });
     if (amountCrypto <= 0) return res.status(400).json({ message: "Invalid amount" });
 
     const wallet = await Wallet.findOne({ user: req.user._id });
     if (!wallet) return res.status(404).json({ message: "Wallet not found" });
 
-    // Calculate total crypto owned
-    const trades = await Trade.find({ user: req.user._id, crypto });
-    const totalBought = trades.filter(t => t.type === "buy").reduce((acc, t) => acc + t.amountCrypto, 0);
-    const totalSold = trades.filter(t => t.type === "sell").reduce((acc, t) => acc + t.amountCrypto, 0);
-    const cryptoOwned = totalBought - totalSold;
+    // FIX: Check holdings Map directly instead of re-tallying all trades
+    if (!wallet.hasSufficient(symbol, amountCrypto)) {
+      return res.status(400).json({ message: "Not enough crypto to sell" });
+    }
 
-    if (cryptoOwned < amountCrypto) return res.status(400).json({ message: "Not enough crypto to sell" });
+    const market = await getLivePrice(symbol);
+    if (!market?.price) return res.status(502).json({ message: "Unable to fetch live price" });
 
-    const amountUSD = amountCrypto * CRYPTO_PRICES[crypto];
+    const amountUSD = amountCrypto * market.price;
+
+    // FIX: Update both balance field and holdings Map
     wallet.balance += amountUSD;
-    await wallet.save();
-    
-     // Log transaction
-    await Transaction.create({
-      user: req.user._id,
-      type: "sell",
-      crypto,
-      amountUSD,
-      amountCrypto,
-      priceAtTrade: CRYPTO_PRICES[crypto]
-    });
+    wallet.updateHolding(symbol, -amountCrypto);
+    wallet.updateHolding("USD", amountUSD);
 
+    await wallet.save();
 
     const trade = await Trade.create({
       user: req.user._id,
       type: "sell",
-      crypto,
+      crypto: symbol,
+      amountUSD,
+      amountCrypto,
+      priceAtTrade: market.price,
+    });
+
+    await Transaction.create({
+      user: req.user._id,
+      wallet: wallet._id,
+      trade: trade._id,
+      type: "sell",
+      asset: symbol,
+      crypto: symbol,
       amountCrypto,
       amountUSD,
-      priceAtTrade: CRYPTO_PRICES[crypto],
+      priceAtTrade: market.price,
+      balanceBefore: wallet.balance - amountUSD,
+      balanceAfter: wallet.balance,
+      description: `Sold ${amountCrypto} ${symbol}`,
+      status: "completed",
     });
 
     res.status(200).json({
       message: "Sell successful",
       walletBalance: wallet.balance,
+      priceSource: market.source,
       trade,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
 // 📜 Get trade history
 export const getTradeHistory = async (req, res) => {
   try {
-    const trades = await Trade.find({ user: req.user.id }).sort({ createdAt: -1 });
+    const { limit = 50, page = 1 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit, 10) || 50, 100);
+    const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+    const skip = (parsedPage - 1) * parsedLimit;
 
-    if (!trades.length)
-      return res.status(404).json({ message: "No trades found for this user" });
+    const query = { user: req.user._id };
+    const [trades, total] = await Promise.all([
+      Trade.find(query).sort({ createdAt: -1 }).limit(parsedLimit).skip(skip),
+      Trade.countDocuments(query),
+    ]);
 
-    res.status(200).json(trades);
+    res.status(200).json({
+      trades,
+      pagination: {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: "Error fetching trade history", error: error.message });
   }

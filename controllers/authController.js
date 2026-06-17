@@ -1,5 +1,8 @@
 import User from '../models/userModel.js';
-import Wallet from "../models/Wallet.js"; // add this at the top
+import Wallet from "../models/wallet.js";
+import Transaction from "../models/transaction.js";
+
+const DEMO_STARTING_BALANCE = 10000;
 
 // 🧾 Register user
 export const registerUser = async (req, res) => {
@@ -11,21 +14,42 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
 
     const user = await User.create({ firstName, lastName, email, password });
-       // 🪙 Automatically create a wallet for the new user
-    await Wallet.create({ user: user._id, balance: 0 });
+    const wallet = await Wallet.create({
+      user: user._id,
+      balance: DEMO_STARTING_BALANCE,
+      holdings: new Map([['USD', DEMO_STARTING_BALANCE]]),
+      initialCapital: DEMO_STARTING_BALANCE,
+    });
+
+    await Transaction.create({
+      user: user._id,
+      wallet: wallet._id,
+      type: 'deposit',
+      asset: 'USD',
+      amountUSD: DEMO_STARTING_BALANCE,
+      balanceBefore: 0,
+      balanceAfter: DEMO_STARTING_BALANCE,
+      description: 'Demo starting balance',
+      status: 'completed',
+    });
     const token = user.getJWT();
 
     res.status(201).json({
       message: 'User registered successfully',
+      token,
       user: {
         id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        token
       }
     });
   } catch (err) {
+    // Surface Mongoose validation errors clearly
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ message: messages[0] });
+    }
     res.status(500).json({ message: 'Error registering user', error: err.message });
   }
 };
@@ -47,12 +71,12 @@ export const loginUser = async (req, res) => {
 
     res.status(200).json({
       message: 'Login successful',
+      token,
       user: {
         id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        token
       }
     });
   } catch (err) {

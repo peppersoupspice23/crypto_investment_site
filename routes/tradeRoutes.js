@@ -1,14 +1,20 @@
-// routes/tradeRoutes.js
-import express from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
-import { buyCrypto, sellCrypto, getTradeHistory } from "../controllers/tradeController.js";
-
+import express from 'express';
+import { 
+  buyCrypto, 
+  sellCrypto, 
+  getTradeHistory
+} from '../controllers/tradeController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post("/buy", authMiddleware, buyCrypto);
-router.post("/sell", authMiddleware, sellCrypto);
-router.get("/history", authMiddleware, getTradeHistory);
+// 💰 Buy crypto
+router.post('/buy', authMiddleware, buyCrypto);
 
+// 💸 Sell crypto
+router.post('/sell', authMiddleware, sellCrypto);
+
+// 📜 Get trade history
+router.get('/history', authMiddleware, getTradeHistory);
 
 export default router;

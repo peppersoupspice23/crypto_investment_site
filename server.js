@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoutes.js';
 import walletRoutes from "./routes/walletRoutes.js";
 import tradeRoutes from "./routes/tradeRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
+import marketRoutes from "./routes/marketRoutes.js";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.use('/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use("/api/trade", tradeRoutes);
 app.use("/api/transactions", transactionRoutes); 
+app.use("/api/market", marketRoutes);
 
 // Root route
 app.get('/', (req, res) => {
